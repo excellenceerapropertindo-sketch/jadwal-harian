@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jadwal Harian Online</title>
+  
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d6efd">
+
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { max-width: 500px; margin: 20px auto; padding: 0 16px; background: #f8f9fa; color: #333; }
+    h2 { margin-bottom: 4px; }
+    .date-badge { font-size: 14px; color: #6c757d; margin-bottom: 16px; display: block; }
+    
+    .form-card { background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; }
+    .time-inputs { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    input[type="time"] { padding: 10px; border: 1px solid #ced4da; border-radius: 8px; outline: none; flex: 1; font-size: 15px; }
+    textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 8px; outline: none; resize: vertical; min-height: 70px; margin-bottom: 12px; font-family: inherit; font-size: 14px; }
+    
+    button.btn-add { width: 100%; padding: 12px; background: #0d6efd; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; }
+    button.btn-add:hover { background: #0b5ed7; }
+    
+    .time-group { margin-bottom: 16px; }
+    .time-header { background: #e9ecef; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 13px; color: #495057; display: inline-block; margin-bottom: 8px; }
+    
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { background: white; padding: 12px; border-radius: 8px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    
+    .task-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+    .task-left input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #0d6efd; }
+    .task-text { word-break: break-word; font-size: 15px; }
+    .task-text.completed { text-decoration: line-through; color: #adb5bd; }
+    
+    .delete-btn { background: #f8d7da; color: #842029; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; margin-left: 8px; }
+    .delete-btn:hover { background: #f5c2c7; }
+    .empty { text-align: center; color: #adb5bd; margin-top: 40px; font-size: 15px; }
+    .loading { text-align: center; color: #0d6efd; margin-top: 30px; font-size: 14px; }
+  </style>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // Data Konfigurasi Firebase Anda
+    const firebaseConfig = {
+      apiKey: "AIzaSyC5xkHTWCNGSEx_aU-eqTY0C5uba8VWIko",
+      authDomain: "jadwal-harian-d94df.firebaseapp.com",
+      databaseURL: "https://jadwal-harian-d94df-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "jadwal-harian-d94df",
+      storageBucket: "jadwal-harian-d94df.firebasestorage.app",
+      messagingSenderId: "357879556916",
+      appId: "1:357879556916:web:5d87b02bf7cc7865ac5361",
+      measurementId: "G-4W7Y3VB9PV"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    function getTodayString() {
+      const today = new Date();
+      return today.toISOString().split('T')[0];
+    }
+
+    const todayDate = getTodayString();
+    const tasksRef = ref(db, 'daily_tasks/' + todayDate);
+
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    document.getElementById('currentDate').innerText = new Date().toLocaleDateString('id-ID', options);
+
+    onValue(tasksRef, (snapshot) => {
+      const container = document.getElementById('taskListContainer');
+      container.innerHTML = '';
+      const data = snapshot.val();
+
+      if (!data) {
+        container.innerHTML = '<div class="empty">Belum ada tugas hari ini.</div>';
+        return;
+      }
+
+      const grouped = {};
+      Object.keys(data).forEach(id => {
+        const item = data[id];
+        const timeKey = `${item.start} - ${item.end}`;
+        if (!grouped[timeKey]) grouped[timeKey] = [];
+        grouped[timeKey].push({ ...item, id });
+      });
+
+      const sortedTimeKeys = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+
+      sortedTimeKeys.forEach(timeKey => {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'time-group';
+
+        let itemsHtml = '';
+        grouped[timeKey].forEach(item => {
+          itemsHtml += `
+            <li>
+              <div class="task-left">
+                <input type="checkbox" ${item.completed ? 'checked' : ''} data-id="${item.id}" class="chk-task">
+                <span class="task-text ${item.completed ? 'completed' : ''}">${item.name}</span>
+              </div>
+              <button class="delete-btn" data-id="${item.id}">Hapus</button>
+            </li>
+          `;
+        });
+
+        groupDiv.innerHTML = `
+          <div class="time-header">${timeKey}</div>
+          <ul>${itemsHtml}</ul>
+        `;
+        container.appendChild(groupDiv);
+      });
+
+      document.querySelectorAll('.chk-task').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          const id = e.target.getAttribute('data-id');
+          update(ref(db, `daily_tasks/${todayDate}/${id}`), { completed: e.target.checked });
+        });
+      });
+
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = e.target.getAttribute('data-id');
+          remove(ref(db, `daily_tasks/${todayDate}/${id}`));
+        });
+      });
+    });
+
+    document.getElementById('taskForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const start = document.getElementById('startTime').value;
+      const end = document.getElementById('endTime').value;
+      const rawNames = document.getElementById('taskNames').value;
+
+      if (!start || !end || !rawNames.trim()) return;
+
+      const taskArray = rawNames.split('\n').map(name => name.trim()).filter(name => name.length > 0);
+
+      taskArray.forEach(name => {
+        push(tasksRef, {
+          start,
+          end,
+          name,
+          completed: false,
+          createdAt: Date.now()
+        });
+      });
+
+      document.getElementById('taskForm').reset();
+    });
+  </script>
+</head>
+<body>
+
+  <h2>Jadwal Harian</h2>
+  <span id="currentDate" class="date-badge"></span>
+
+  <div class="form-card">
+    <form id="taskForm">
+      <div class="time-inputs">
+        <input type="time" id="startTime" required>
+        <span>-</span>
+        <input type="time" id="endTime" required>
+      </div>
+      <textarea id="taskNames" placeholder="Tulis tugas di sini...&#10;Gunakan ENTER untuk membuat beberapa tugas dalam waktu yang sama:&#10;Mandi&#10;Sholat Dhuha" required></textarea>
+      <button type="submit" class="btn-add">Tambah Tugas</button>
+    </form>
+  </div>
+
+  <div id="taskListContainer">
+    <div class="loading">Memuat data...</div>
+  </div>
+
+</body>
+</html>
